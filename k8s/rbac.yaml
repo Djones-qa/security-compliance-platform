@@ -38,7 +38,7 @@ subjects:
     namespace: security-platform
 roleRef:
   kind: Role
-  apiGroupL: rbac.authorization.k8s.io
+  apiGroup: rbac.authorization.k8s.io
   name: policy-api-role
 ---
 # ClusterRole: Vault auth — allow token review for Kubernetes auth

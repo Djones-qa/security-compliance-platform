@@ -28,9 +28,10 @@ spec:
           port: 8080
   egress:
     # Allow egress to OPA sidecar
-    - podSelector:
-        matchLabels:
-          app: opa
+    - to:
+        - podSelector:
+            matchLabels:
+              app: opa
       ports:
         - protocol: TCP
           port: 8181
@@ -41,9 +42,10 @@ spec:
         - protocol: TCP
           port: 53
     # Allow Vault
-    - podSelector:
-        matchLabels:
-          app: vault
+    - to:
+        - podSelector:
+            matchLabels:
+              app: vault
       ports:
         - protocol: TCP
           port: 8200
@@ -72,9 +74,10 @@ spec:
         - protocol: TCP
           port: 53
     # Allow Vault
-    - podSelector:
-        matchLabels:
-          app: vault
+    - to:
+        - podSelector:
+            matchLabels:
+              app: vault
       ports:
         - protocol: TCP
           port: 8200
