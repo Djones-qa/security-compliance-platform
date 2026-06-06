@@ -1,0 +1,97 @@
+# Falco Custom Security Rules
+# These rules extend the default Falco ruleset for production threat detection
+
+- rule: Container Shell Spawn
+  desc: Detects a shell being spawned inside a container (potential breakout or reverse shell)
+  condition: >
+    spawned_process and
+    container and
+    proc.name in (shell_binaries) and
+    not proc.pname in (shell_binaries) and
+    not container.image.repository in (allowed_shell_images)
+  output: >
+    Shell spawned in container
+    (user=%user.name user_loginuid=%user.loginuid
+     container_id=%container.id container_name=%container.name
+     image=%container.image.repository:%container.image.tag
+     shell=%proc.name parent=%proc.pname cmdline=%proc.cmdline)
+  priority: WARNING
+  tags: [container, shell, mitre_execution]
+
+- rule: Read Sensitive File Untrusted
+  desc: Detects access to sensitive files like /etc/shadow, /etc/passwd from unexpected processes
+  condition: >
+    open_read and
+    (fd.name in (sensitive_files)) and
+    not proc.name in (safe_file_readers) and
+    container
+  output: >
+    Sensitive file read in container
+    (user=%user.name process=%proc.name file=%fd.name
+     container_id=%container.id image=%container.image.repository)
+  priority: ERROR
+  tags: [filesystem, mitre_credential_access]
+
+- rule: Unexpected Network Outbound Connection
+  desc: Detects outbound connections to unexpected destinations from a container
+  condition: >
+    outbound and
+    container and
+    not fd.sip in (allowed_egress_ips) and
+    not proc.name in (allowed_network_tools)
+  output: >
+    Unexpected outbound network connection
+    (user=%user.name process=%proc.name
+     connection=%fd.name container=%container.name
+     image=%container.image.repository)
+  priority: WARNING
+  tags: [network, mitre_exfiltration]
+
+- rule: Write Below Binary Dir
+  desc: Detects writes to binary directories inside a container
+  condition: >
+    write_file and
+    container and
+    fd.directory in (/bin, /sbin, /usr/bin, /usr/sbin)
+  output: >
+    File write to binary directory in container
+    (user=%user.name process=%proc.name file=%fd.name
+     container_id=%container.id image=%container.image.repository)
+  priority: ERROR
+  tags: [filesystem, mitre_persistence]
+
+- rule: Kubernetes Audit — Secrets Access
+  desc: Detects access to Kubernetes secrets via the API server
+  condition: >
+    ka.target.resource == "secrets" and
+    ka.verb in (get, list, watch) and
+    not ka.user.name in (allowed_secret_readers)
+  output: >
+    Kubernetes secret accessed
+    (user=%ka.user.name verb=%ka.verb
+     resource=%ka.target.resource namespace=%ka.target.namespace
+     name=%ka.target.name)
+  priority: WARNING
+  source: k8s_audit
+  tags: [k8s_audit, secrets, mitre_credential_access]
+
+- list: shell_binaries
+  items: [bash, sh, zsh, ksh, fish, tcsh, csh, dash]
+
+- list: sensitive_files
+  items: [/etc/shadow, /etc/sudoers, /etc/pam.conf, /root/.ssh/authorized_keys]
+
+- list: safe_file_readers
+  items: [sshd, systemd, auditd]
+
+- list: allowed_shell_images
+  items: []
+
+- list: allowed_egress_ips
+  items: []
+
+- list: allowed_network_tools
+  items: [curl, wget, nc]
+
+- list: allowed_secret_readers
+  items: [vault, vault-agent, system:serviceaccount:vault:vault]

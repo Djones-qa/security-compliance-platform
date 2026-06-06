@@ -1,0 +1,55 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opa-policies
+  namespace: security-platform
+  labels:
+    app: opa
+    team: platform
+data:
+  # Policies are bundled here for the OPA sidecar
+  # In production, use OPA bundles served from an S3/GCS bucket instead
+  no_root_containers.rego: |
+    package kubernetes.admission
+
+    import future.keywords.if
+    import future.keywords.in
+
+    default allow = false
+
+    allow if {
+        count(deny) == 0
+    }
+
+    deny contains msg if {
+        input.kind.kind == "Pod"
+        container := input.object.spec.containers[_]
+        container.securityContext.runAsNonRoot == false
+        msg := sprintf("container '%v' must not run as root", [container.name])
+    }
+
+    deny contains msg if {
+        input.kind.kind == "Pod"
+        container := input.object.spec.containers[_]
+        container.securityContext.runAsUser == 0
+        msg := sprintf("container '%v' must not run as root (UID 0)", [container.name])
+    }
+
+  require_resource_limits.rego: |
+    package kubernetes.admission
+
+    import future.keywords.if
+
+    deny contains msg if {
+        input.kind.kind == "Pod"
+        container := input.object.spec.containers[_]
+        not container.resources.limits.cpu
+        msg := sprintf("container '%v' must have CPU limit set", [container.name])
+    }
+
+    deny contains msg if {
+        input.kind.kind == "Pod"
+        container := input.object.spec.containers[_]
+        not container.resources.limits.memory
+        msg := sprintf("container '%v' must have memory limit set", [container.name])
+    }

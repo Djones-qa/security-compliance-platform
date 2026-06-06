@@ -1,0 +1,6 @@
+# Trivy ignore file
+# Add CVE IDs here to suppress known false positives or accepted risks
+# Format: CVE-YYYY-NNNNN
+
+# Example (remove before production):
+# CVE-2023-12345

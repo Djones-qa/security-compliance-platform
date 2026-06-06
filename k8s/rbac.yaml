@@ -1,0 +1,71 @@
+# Service accounts
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: policy-api-sa
+  namespace: security-platform
+  annotations:
+    # Vault Kubernetes auth annotation
+    vault.hashicorp.com/role: "policy-api"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: compliance-reporter-sa
+  namespace: security-platform
+  annotations:
+    vault.hashicorp.com/role: "compliance-reporter"
+---
+# Role: policy-api — read ConfigMaps (OPA policy bundles)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: policy-api-role
+  namespace: security-platform
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: policy-api-rolebinding
+  namespace: security-platform
+subjects:
+  - kind: ServiceAccount
+    name: policy-api-sa
+    namespace: security-platform
+roleRef:
+  kind: Role
+  apiGroupL: rbac.authorization.k8s.io
+  name: policy-api-role
+---
+# ClusterRole: Vault auth — allow token review for Kubernetes auth
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vault-auth-delegator
+rules:
+  - apiGroups: [""]
+    resources: ["serviceaccounts/token"]
+    verbs: ["create"]
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["tokenreviews"]
+    verbs: ["create"]
+  - apiGroups: ["authorization.k8s.io"]
+    resources: ["subjectaccessreviews"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vault-auth-delegator-binding
+subjects:
+  - kind: ServiceAccount
+    name: vault
+    namespace: security-platform
+roleRef:
+  kind: ClusterRole
+  apiGroup: rbac.authorization.k8s.io
+  name: vault-auth-delegator

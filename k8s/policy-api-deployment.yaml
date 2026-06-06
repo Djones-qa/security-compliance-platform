@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: policy-api
+  namespace: security-platform
+  labels:
+    app: policy-api
+    version: v1.0.0
+    team: platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: policy-api
+  template:
+    metadata:
+      labels:
+        app: policy-api
+        version: v1.0.0
+        team: platform
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "policy-api"
+        vault.hashicorp.com/agent-inject-secret-config: "secret/data/policy-api/config"
+    spec:
+      serviceAccountName: policy-api-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: policy-api
+          image: policy-api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: OPA_URL
+              value: http://localhost:8181
+            - name: FAIL_OPEN
+              value: "false"
+            - name: LOG_LEVEL
+              value: info
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: [ALL]
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+        - name: opa-sidecar
+          image: openpolicyagent/opa:0.59.0-rootless
+          args:
+            - run
+            - --server
+            - --addr=0.0.0.0:8181
+            - --log-format=json
+            - --set=decision_logs.console=true
+            - /policies
+          ports:
+            - containerPort: 8181
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: opa-policies
+              mountPath: /policies
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: opa-policies
+          configMap:
+            name: opa-policies

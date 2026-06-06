@@ -1,0 +1,80 @@
+# Deny all ingress/egress by default, then selectively allow
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: security-platform
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-policy-api-ingress
+  namespace: security-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: policy-api
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    # Allow egress to OPA sidecar
+    - podSelector:
+        matchLabels:
+          app: opa
+      ports:
+        - protocol: TCP
+          port: 8181
+    # Allow DNS
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Allow Vault
+    - podSelector:
+        matchLabels:
+          app: vault
+      ports:
+        - protocol: TCP
+          port: 8200
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-compliance-reporter-ingress
+  namespace: security-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: compliance-reporter
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 8090
+  egress:
+    # Allow DNS
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Allow Vault
+    - podSelector:
+        matchLabels:
+          app: vault
+      ports:
+        - protocol: TCP
+          port: 8200

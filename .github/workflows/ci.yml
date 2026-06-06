@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  # ── Job 1: TypeScript type check + build (matrix) ──────────────────────────
+  typecheck-build:
+    name: Typecheck & Build — ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [policy-api, compliance-reporter]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: services/${{ matrix.service }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: services/${{ matrix.service }}
+
+      - name: Type check
+        run: npm run typecheck
+        working-directory: services/${{ matrix.service }}
+
+      - name: Build
+        run: npm run build
+        working-directory: services/${{ matrix.service }}
+
+  # ── Job 2: OPA policy tests via conftest ───────────────────────────────────
+  opa-tests:
+    name: OPA Policy Tests (conftest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install conftest
+        run: |
+          wget -q https://github.com/open-policy-agent/conftest/releases/download/v0.47.0/conftest_0.47.0_Linux_x86_64.tar.gz
+          tar -xzf conftest_0.47.0_Linux_x86_64.tar.gz
+          sudo mv conftest /usr/local/bin/
+          conftest --version
+
+      - name: Run OPA unit tests
+        run: |
+          cd policies
+          conftest test kubernetes/ --policy tests/ --all-namespaces
+
+  # ── Job 3: Trivy vulnerability scanning ───────────────────────────────────
+  trivy-scan:
+    name: Trivy Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy on policy-api Dockerfile
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: config
+          scan-ref: services/policy-api
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          format: table
+
+      - name: Run Trivy on compliance-reporter Dockerfile
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: config
+          scan-ref: services/compliance-reporter
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          format: table
+
+      - name: Run Trivy on Kubernetes manifests
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: config
+          scan-ref: k8s/
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          format: table
+
+  # ── Job 4: kubeconform — validate K8s manifests ────────────────────────────
+  kubeconform:
+    name: Kubernetes Manifest Validation (kubeconform)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubeconform
+        run: |
+          wget -q https://github.com/yannh/kubeconform/releases/download/v0.6.4/kubeconform-linux-amd64.tar.gz
+          tar -xzf kubeconform-linux-amd64.tar.gz
+          sudo mv kubeconform /usr/local/bin/
+          kubeconform -v
+
+      - name: Validate Kubernetes manifests
+        run: |
+          kubeconform \
+            -kubernetes-version 1.28.0 \
+            -strict \
+            -ignore-missing-schemas \
+            -summary \
+            k8s/
