@@ -1,5 +1,6 @@
 package kubernetes.admission_test
 
+import future.keywords.if
 import data.kubernetes.admission
 
 # Test: deny pod running as root via runAsNonRoot: false
